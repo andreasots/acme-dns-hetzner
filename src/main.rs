@@ -9,7 +9,8 @@ use axum::http::StatusCode;
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::de::{Error as _, MapAccess, Visitor};
+use serde::{Deserialize, Deserializer, Serialize};
 use tokio::net::TcpListener;
 
 const MAX_AGE: Duration = Duration::from_secs(15 * 60);
@@ -40,9 +41,43 @@ struct JsonError {
     error: String,
 }
 
-#[derive(Deserialize)]
 struct RegistrationForm {
     allowfrom: Vec<String>,
+}
+
+impl<'de> Deserialize<'de> for RegistrationForm {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct RegistrationFormVisitor;
+
+        impl<'de> Visitor<'de> for RegistrationFormVisitor {
+            type Value = RegistrationForm;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an RegistrationForm")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut allowfrom = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.to_lowercase().as_str() {
+                        "allowfrom" => allowfrom = Some(map.next_value()?),
+                        _ => (),
+                    }
+                }
+
+                Ok(RegistrationForm {
+                    allowfrom: allowfrom.ok_or_else(|| A::Error::missing_field("allowfrom"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct(
+            "UpdateForm",
+            &["subdomain", "txt"],
+            RegistrationFormVisitor,
+        )
+    }
 }
 
 #[derive(Serialize)]
@@ -67,10 +102,43 @@ async fn register(
     })
 }
 
-#[derive(Deserialize)]
 struct UpdateForm {
     subdomain: String,
     txt: String,
+}
+
+impl<'de> Deserialize<'de> for UpdateForm {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        struct UpdateFormVisitor;
+
+        impl<'de> Visitor<'de> for UpdateFormVisitor {
+            type Value = UpdateForm;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("an UpdateForm")
+            }
+
+            fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+                let mut subdomain = None;
+                let mut txt = None;
+
+                while let Some(key) = map.next_key::<String>()? {
+                    match key.to_lowercase().as_str() {
+                        "subdomain" => subdomain = Some(map.next_value()?),
+                        "txt" => txt = Some(map.next_value()?),
+                        _ => (),
+                    }
+                }
+
+                Ok(UpdateForm {
+                    subdomain: subdomain.ok_or_else(|| A::Error::missing_field("subdomain"))?,
+                    txt: txt.ok_or_else(|| A::Error::missing_field("txt"))?,
+                })
+            }
+        }
+
+        deserializer.deserialize_struct("UpdateForm", &["subdomain", "txt"], UpdateFormVisitor)
+    }
 }
 
 #[derive(Serialize)]
