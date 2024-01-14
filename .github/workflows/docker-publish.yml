@@ -32,6 +32,9 @@ jobs:
       - name: add x86_64-unknown-linux-musl target
         run: rustup target add x86_64-unknown-linux-musl
 
+      - name: install musl-tools
+        run: apt install -y musl-tools
+
       - name: Build
         run: env RUSTFLAGS="-C target-feature=+crt-static" cargo build --verbose --release --all --target x86_64-unknown-linux-musl
 
